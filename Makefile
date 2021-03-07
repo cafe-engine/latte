@@ -1,9 +1,9 @@
 CC = gcc
-SRC = src/*.c
+SRC = $(wildcard src/*.c)
 OUT = latte
-INCLUDE = -Iexternal -Isrc
-CFLAGS = -std=c99 -Wall
-LFLAGS = -l$(OUT) -lm -lpthread -ldl 
+INCLUDE = -Iexternal -Isrc -Iexternal/sabotar/src
+CFLAGS = -std=c89 -Wall
+LFLAGS = -l$(OUT) 
 
 LIBNAME = lib$(OUT)
 

@@ -1,0 +1,36 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "src/latte.c",
+      "-o",
+      "src/*.o",
+      "-Iexternal",
+      "-Isrc",
+      "-Iexternal/sabotar/src",
+      "-std=c89",
+      "-Wall"
+    ],
+    "directory": "/home/s4b0t/cafe/modules/latte",
+    "file": "/home/s4b0t/cafe/modules/latte/src/latte.c",
+    "output": "/home/s4b0t/cafe/modules/latte/src/*.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "main.c",
+      "-o",
+      "latte",
+      "-std=c89",
+      "-Wall",
+      "-Iexternal",
+      "-Isrc",
+      "-Iexternal/sabotar/src"
+    ],
+    "directory": "/home/s4b0t/cafe/modules/latte",
+    "file": "/home/s4b0t/cafe/modules/latte/main.c",
+    "output": "/home/s4b0t/cafe/modules/latte/main.o"
+  }
+]
