@@ -28,6 +28,24 @@ struct la_Dir {
     DIR *stream;
 };
 
+typedef struct Node Node;
+struct Node {
+    posix_header_t h;
+
+	union {
+        la_Dir dir;
+		la_File file;
+	};
+	Node *child;
+    Node *next;
+};
+
+struct la_VirtDrive {
+    int mode;
+    void *stream;
+	Node *root;
+};
+
 struct Latte {
     char basedir[64];
     int basedir_len;
@@ -47,6 +65,7 @@ void la_resolve_path(const char *path, char *out) {
 
     long len = strlen(path);
     char res[100];
+    res[0] = '\0';
     if (strcmp(base, ".")) {
 	len += strlen(base) + 1;
 	strcpy(res, base);
@@ -98,6 +117,28 @@ static void _get_mode(char *out, int mode) {
 	if (mode & LA_READ_MODE) out[2] = '+';
 }
 
+static int _header(const char *filepath, la_Header *out) {
+    if (!filepath) return 0;
+    if (!out) return 0;
+
+    struct stat s;
+    const char *file = filepath;
+    if (stat(file, &s) != 0) {
+	fprintf(stderr, "cannot open file %s\n", filepath);
+	return 0;
+    }
+    out->gid = s.st_gid;
+    out->uid = s.st_uid;
+    strcpy(out->name, file);
+    out->mode = s.st_mode & 0x8f;
+
+    out->type = S_ISDIR(s.st_mode) ? LA_TDIR : LA_TREG;
+    out->size = s.st_size;
+
+
+    return 1;
+}
+
 static int _file_init(la_File *f, const char *filename, int mode) {
     LA_ASSERT(f != NULL, "la_File cannot be NULL");
     if (!filename) return 0;
@@ -113,7 +154,7 @@ static int _file_init(la_File *f, const char *filename, int mode) {
     fseek(f->stream, 0, SEEK_SET);
 
     strcpy(f->h.name, filename);*/
-    la_header(filename, &f->h);
+    _header(filename, &f->h);
     /*printf("%d\n", f->h.size);*/
     f->mode = mode;
     f->pos = 0;
@@ -125,6 +166,7 @@ static int _file_init(la_File *f, const char *filename, int mode) {
 
 la_File* la_fopen(const char *filename, int mode) {
     la_File *f = (la_File*)malloc(sizeof(*f));
+    memset(f, 0, sizeof(*f));
     LA_ASSERT(f != NULL, "failed to malloc");
     LA_ASSERT(filename != NULL, "filename cannot be NULL");
     
@@ -230,13 +272,20 @@ int la_frewrite(la_File *f, const char *txt, int len) {
 
     if (~f->mode & LA_WRITE_MODE && ~f->mode & LA_REWRITE_MODE) return 0;
     int off = f->pos + f->offset;
-    
+    int start_sz = f->offset - f->pos;
+
+    char sbuff[start_sz];
+    la_fread(f, sbuff, start_sz);
+
+    int mode = f->mode;
+
+    la_freopen(f, NULL, LA_REWRITE_MODE);
+    la_freopen(f, NULL, mode);
+
+    la_fwrite(f, sbuff, start_sz);
+    la_fwrite(f, txt, len);
+
     /* fseek(f->stream, off, SEEK_SET); */
-    char m[3] = "w";
-    if (~f->mode & LA_READ_MODE) {
-	_get_mode(m, f->mode);
-	freopen(NULL, m, f->stream);
-    }
 
     return 0;
 }
@@ -289,28 +338,6 @@ long la_size(const char *filename, FILE **out) {
     else *out = fp;
 
     return sz;
-}
-
-static int _header(const char *filepath, la_Header *out) {
-    if (!filepath) return 0;
-    if (!out) return 0;
-
-    struct stat s;
-    const char *file = filepath;
-    if (stat(file, &s) != 0) {
-	fprintf(stderr, "cannot open file %s\n", filepath);
-	return 0;
-    }
-    out->gid = s.st_gid;
-    out->uid = s.st_uid;
-    strcpy(out->name, file);
-    out->mode = s.st_mode & 0x8f;
-
-    out->type = S_ISDIR(s.st_mode) ? LA_TDIR : LA_TREG;
-    out->size = s.st_size;
-
-
-    return 1;
 }
 
 int la_header(const char *filepath, la_Header *out) {
@@ -442,7 +469,6 @@ la_Dir* la_dopen(const char *path) {
     LA_ASSERT(path != NULL, "cannot open directory");
     la_Dir *dir = (la_Dir*)malloc(sizeof(*dir));
     char p[100];
-    printf("%s\n", path);
     la_resolve_path(path, p);
 
     dir->stream = opendir(p);
@@ -480,4 +506,20 @@ int la_dread(la_Dir *dir, la_Header *out) {
     strcat(file, d->d_name);
     _header(file, out);
     return 1;
+}
+
+/* Virtual FileSystem */
+
+static Node* _create_node();
+
+LA_API la_VirtDrive* la_virt_create(int mode) {
+    la_VirtDrive *drv = (la_VirtDrive*)malloc(sizeof(*drv));
+    drv->root = NULL; 
+    drv->mode = mode;
+    drv->stream = NULL;
+    return drv;
+}
+
+LA_API la_VirtDrive* la_virt_mount(const char *filepath, int mode, int usage) {
+    
 }
