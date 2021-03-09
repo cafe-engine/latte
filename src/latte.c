@@ -139,6 +139,8 @@ static int _header(const char *filepath, la_Header *out) {
     return 1;
 }
 
+/* File */
+
 static int _file_init(la_File *f, const char *filename, int mode) {
     LA_ASSERT(f != NULL, "la_File cannot be NULL");
     if (!filename) return 0;

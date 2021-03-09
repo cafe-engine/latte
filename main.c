@@ -1,3 +1,4 @@
+#define LATTE_IMPLEMENTATION
 #include "src/latte.h"
 #include <elf.h>
 
