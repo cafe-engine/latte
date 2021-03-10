@@ -1,3 +1,4 @@
+#define LATTE_IMPLEMENTATION
 #ifndef LATTE_H
 #define LATTE_H
 
@@ -8,20 +9,28 @@
 
 enum {
     LA_TREG = 0,
-    LA_TDIR
+    LA_TLINK,
+    LA_TSYM,
+    LA_TCHR,
+    LA_TBLK,
+    LA_TDIR,
+    LA_TFIFO
 };
 
 enum {
-    LA_READ_MODE = 1,
-    LA_WRITE_MODE,
-    LA_REWRITE_MODE
+    LA_READ_MODE    = (1 << 0),
+    LA_WRITE_MODE   = (1 << 1),
+    LA_REWRITE_MODE = (1 << 2)
 };
 
-typedef struct la_File la_File;
-typedef struct la_Dir la_Dir;
-typedef struct la_virtdrv_s la_virtdrv_t;
+enum {
+    LA_FILE_STREAM = 0,
+    LA_FILE_STATIC
+};
 
-typedef struct la_Node la_Node;
+typedef struct Latte Latte;
+
+typedef struct la_virtdrv_s la_virtdrv_t;
 
 typedef struct la_posixh_s la_posixh_t;
 typedef struct la_header_s la_header_t;
@@ -104,13 +113,15 @@ LA_API la_dir_t* la_vdopen(la_virtdrv_t *drv, const char *path);
 /***********************
  *        Utils        *
  ***********************/
+typedef void la_lib_t;
 
-LA_API void* la_dlopen(const char *libpath);
-LA_API void la_dlclose(void *dl);
+LA_API la_lib_t* la_dlopen(const char *libpath);
+LA_API void la_dlclose(la_lib_t *dl);
 
-LA_API int la_dlcall();
+LA_API int la_dlcall(la_lib_t *dl, const char *fn);
 
 #endif /* LATTE _H */
+
 
 #if defined(LATTE_IMPLEMENTATION)
 
@@ -129,14 +140,14 @@ LA_API int la_dlcall();
 
 #define latte() (&_ctx)
 
-struct la_file_t {
+struct la_file_s {
     la_header_t h;
     int pos, offset;
     int mode;
     FILE *stream;
 };
 
-struct la_dir_t {
+struct la_dir_s {
     la_header_t h;
     DIR *stream;
 };
@@ -175,6 +186,7 @@ void la_get_basedir(char *out) {
 
 int la_init(const char *basedir) {
    la_set_basedir(basedir);
+   return 1;
 }
 
 void la_deinit() {
@@ -266,8 +278,8 @@ int la_isfile(const char *filename) {
 }
 
 int la_isdir(const char *path) {
-    la_header h;
-    la_header(filename, &h);
+    la_header_t h;
+    la_header(path, &h);
 
     return h.type == LA_TDIR;
 }
@@ -275,6 +287,35 @@ int la_isdir(const char *path) {
 /**********************
  *        File        *
  **********************/
+
+static int _get_mode(char *out, int mode) {
+    if (!out) return 0;
+    memset(out, 0, 3);
+
+    if (mode & LA_REWRITE_MODE) out[0] = 'w';
+    else if (mode & LA_READ_MODE) out[0] = 'r';
+    else if (mode & LA_WRITE_MODE) out[0] = 'w';
+    else {
+        fprintf(stderr, "invalid file open mode: %d\n", mode);
+        exit(1);
+    }
+
+    out[1] = 'b';
+    
+    if (mode & LA_REWRITE_MODE || mode & LA_WRITE_MODE)
+        if (mode & LA_READ_MODE) out[2] = '+';
+
+    return 1;
+}
+
+static int _header(const char *filepath, la_header_t *out) {
+    if (!filepath) return 0;
+    return 1;
+}
+
+static int _file_init(la_file_t *fp, const char *filename, int mode) {
+    return 1;
+}
 
 la_file_t* la_fopen(const char *filename, int mode) {
    la_file_t *fp = (la_file_t*)malloc(sizeof(*fp)); 
@@ -288,6 +329,7 @@ la_file_t* la_fopen(const char *filename, int mode) {
     char file[100];
     la_resolve_path(filename, file);
     if (mode & LA_WRITE_MODE) la_touch(file);
+    return fp;
 }
 
 #endif /* LATTE_IMPLEMENTATION */
