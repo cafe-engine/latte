@@ -84,9 +84,11 @@ LA_API long la_size(const char *filename, FILE ** out);
 LA_API int la_file_iself(la_File *f);
 LA_API int la_file_ispe(la_File *f);
 
+LA_API int la_elf_fsize(la_File *f);
 
 LA_API int la_elf_fread(la_File *f, char *out, int bytes);
 
+LA_API int la_elf_fwrite(la_File *f, const char *text, int bytes);
 /* FileSystem */
 
 LA_API int la_header(const char *filename, la_Header *out);

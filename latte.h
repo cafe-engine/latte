@@ -332,4 +332,36 @@ la_file_t* la_fopen(const char *filename, int mode) {
     return fp;
 }
 
+int la_freopen(la_file_t *fp, const char *filename, int mode) {
+    char _m[3];
+    _get_mode(_m, mode);
+    char file[100];
+    la_resolve_path(filename, file);
+    if (!fp) return 0;
+    if (fp->stream) fp->stream = freopen(file, _m, fp->stream);
+    else fp->stream = fopen(file, _m);
+
+    return 1;
+}
+
+LA_API void la_fclose(la_file_t *fp) {
+    if (!fp) return;
+
+    if (fp->stream) fclose(fp->stream);
+
+    free((void*)fp);
+}
+
+int la_fheader(la_file_t *fp, la_header_t *out) {
+    if (!fp) return 0;
+    if (!out) return 0;
+    memcpy(out, &fp->h, sizeof(*out));
+    return 1;
+}
+
+long la_fsize(la_file_t *fp) {
+    if (!fp) return -1;
+    return fp->h.size;
+}
+
 #endif /* LATTE_IMPLEMENTATION */
