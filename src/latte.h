@@ -40,10 +40,9 @@ enum {
 };
 
 enum {
-    LA_RD_ONLY = 0,
-    LA_WR_ONLY,
-    LA_RDWR,
-    LA_WRRD
+    LA_BLOCK_SIZE = 0,
+    LA_NAME_SIZE,
+
 };
 
 enum {
@@ -63,7 +62,8 @@ enum {
 
 typedef struct Latte Latte;
 
-typedef struct la_virtdrv_s la_virtdrv_t;
+typedef struct la_vdrive_s la_vdrive_t;
+typedef struct la_vnode_s la_vnode_t;
 
 typedef struct la_posix_header_s la_posix_header_t;
 
@@ -137,15 +137,23 @@ LA_API int la_dread(la_dir_t *dp, la_header_t *out);
  *       Virtual       *
  ***********************/
 
-LA_API la_virtdrv_t* la_vopen(const char *filename, int mode);
-LA_API la_virtdrv_t* la_vmount(const char *path, int mode);
+LA_API la_vdrive_t* la_vopen(const char *filename, int mode);
+LA_API la_vdrive_t* la_vmount(const char *path, int mode);
 
-LA_API void la_vclose(la_virtdrv_t *drv);
+LA_API void la_vclose(la_vdrive_t *drv);
 
-LA_API la_file_t* la_vfopen(la_virtdrv_t *drv, const char *filename);
-LA_API la_dir_t* la_vdopen(la_virtdrv_t *drv, const char *path);
+LA_API la_file_t* la_vfopen(la_vdrive_t *drv, const char *filename);
+LA_API la_dir_t* la_vdopen(la_vdrive_t *drv, const char *path);
 
-LA_API int la_vreplace(la_virtdrv_t *drv, const char *f1, const char *f2);
+LA_API int la_vreplace(la_vdrive_t *drv, const char *f1, const char *f2);
+
+LA_API la_vnode_t* la_vnode_create(int type);
+LA_API void la_vnode_destroy(la_vnode_t *node);
+
+LA_API la_file_t* la_vnode_file(la_vnode_t *node);
+LA_API la_dir_t* la_vnode_dir(la_vnode_t *node);
+
+
 
 /***********************
  *        Utils        *
@@ -238,8 +246,21 @@ struct la_dir_s {
     DIR *stream;
 };
 
-struct la_virtdrv_s {
+struct la_vnode_s {
+    int type;
+
+    union {
+        la_file_t fp;
+        la_dir_t dir;
+    };
+
+    la_vnode_t *child;
+    la_vnode_t *next;
+};
+
+struct la_vdrive_s {
     la_file_t stream;
+    la_vnode_t root; 
 };
 
 struct Latte {
@@ -601,11 +622,16 @@ la_dir_t* la_dopen(const char *path) {
     la_dir_t *dir = (la_dir_t*)malloc(sizeof(*dir));
 
     char p[100];
+    memset(p, 0, 100);
     la_resolve_path(path, p);
 
     dir->stream = opendir(p);
 
     _header(p, &dir->h);
+    char *c = p;
+    printf("%c\n", c[0]);
+    while (*c == '.' || *c == '/') c++;
+    strcpy(dir->h.name, c);
     return dir;
 }
 
@@ -626,7 +652,6 @@ int la_dread(la_dir_t *dir, la_header_t *out) {
 
     char file[100];
     strcpy(file, dir->h.name);
-    strcat(file, "/");
     strcat(file, d->d_name);
     _header(file, out);
     return 1;
@@ -635,10 +660,19 @@ int la_dread(la_dir_t *dir, la_header_t *out) {
 /*************************
  *        Virtual        *
  *************************/
+la_vnode_t* la_vnode_create(int type) {
+    la_vnode_t *node = (la_vnode_t*)malloc(sizeof(*node));
+    la_assert(node != NULL);
 
-la_virtdrv_t* la_vopen(const char *vhd, int mode) {
+    memset(node, 0, sizeof(*node));
+    node->type = type;
+
+    return node;
+}
+
+la_vdrive_t* la_vopen(const char *vhd, int mode) {
     la_assert(vhd != NULL);
-    la_virtdrv_t *drv = (la_virtdrv_t*)malloc(sizeof(*drv));
+    la_vdrive_t *drv = (la_vdrive_t*)malloc(sizeof(*drv));
     if (!drv) la_fatal("cannot malloc for %s", vhd);
     memset(drv, 0, sizeof(*drv));
 
@@ -647,28 +681,31 @@ la_virtdrv_t* la_vopen(const char *vhd, int mode) {
         free(drv);
         return NULL;
     }
-    
+
+    memset(&drv->root, 0, sizeof(drv->root));
+    drv->root.type = 1;
+
     return drv;
 }
 
-la_virtdrv_t* la_vmount(const char *path, int mode) {
+la_vdrive_t* la_vmount(const char *path, int mode) {
     return NULL;
 }
 
-void la_vclose(la_virtdrv_t *drv) {
+void la_vclose(la_vdrive_t *drv) {
     if (!drv) return;
     
     if (drv->stream.stream) fclose(drv->stream.stream);
 }
 
-la_file_t* la_vfopen(la_virtdrv_t *drv, const char *filename) {
+la_file_t* la_vfopen(la_vdrive_t *drv, const char *filename) {
     la_assert(drv != NULL);
     if (!filename) return NULL;
     
     return &drv->stream;
 }
 
-la_dir_t* la_vdopen(la_virtdrv_t *drv, const char *path) {
+la_dir_t* la_vdopen(la_vdrive_t *drv, const char *path) {
     return NULL;
 }
 

@@ -3,3 +3,5 @@ latte
 *.a
 .clangd
 src/*.o
+main.c.old
+Makefile1
