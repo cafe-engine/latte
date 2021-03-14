@@ -5,3 +5,6 @@ latte
 src/*.o
 main.c.old
 Makefile1
+bin/
+obj/
+lib/
