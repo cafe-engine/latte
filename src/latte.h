@@ -206,7 +206,7 @@ LA_API int la_log_(int mode, const char *file, int line, const char *function, c
 #define latte() (&_ctx)
 
 /* POSIX header */
-struct posix_header_s {
+struct la_posix_header_s {
   struct {
     char name[100];       /* 0 */
     char mode[8];         /* 100 */
@@ -536,6 +536,10 @@ int la_fread(la_file_t *fp, char *out, int bytes) {
         la_error("write-only file");
         return 0;
     }
+
+    int off = fp->pos + fp->offset;
+    fseek(fp->stream, off, SEEK_SET);
+
     return fread(out, bytes, 1, fp->stream) == 0;
 }
 
@@ -660,6 +664,7 @@ int la_dread(la_dir_t *dir, la_header_t *out) {
 /*************************
  *        Virtual        *
  *************************/
+
 la_vnode_t* la_vnode_create(int type) {
     la_vnode_t *node = (la_vnode_t*)malloc(sizeof(*node));
     la_assert(node != NULL);
@@ -668,6 +673,29 @@ la_vnode_t* la_vnode_create(int type) {
     node->type = type;
 
     return node;
+}
+
+int _posix_to_la_header(la_posix_header_t *posh, la_header_t *out) {
+    if (!posh) {
+        la_error("posix header cannot be NULL");
+        return 0;
+    }
+    if (!out) return 0;
+
+    strcpy(out->name, posh->name);
+    strcpy(out->gname, posh->gname);
+    strcpy(out->uname, posh->uname);
+    out->size = strtol(posh->size, NULL, 8);
+    out->mode = strtol(posh->mode, NULL, 8);
+    out->gid = strtol(posh->gid, NULL, 10);
+    out->uid = strtol(posh->uid, NULL, 10);
+    
+    return 1;
+}
+
+int _la_header_to_posix(la_header_t *h, la_posix_header_t *out) {
+
+    return 1;
 }
 
 la_vdrive_t* la_vopen(const char *vhd, int mode) {
@@ -685,6 +713,34 @@ la_vdrive_t* la_vopen(const char *vhd, int mode) {
     memset(&drv->root, 0, sizeof(drv->root));
     drv->root.type = 1;
 
+
+    la_file_t *stream = &drv->stream;
+    int off = 0;
+    la_vnode_t *curr = &drv->root;
+    while (off < stream->h.size-1024) { /* tar two empty 512b blocks */
+        la_posix_header_t ph;
+        la_header_t h;
+        
+        la_fread(stream, (char*)&ph, sizeof(ph));    
+        _posix_to_la_header(&ph, &h);
+
+
+        la_vnode_t *node = la_vnode_create(h.type);
+        if (curr) curr->next = node;
+
+        memcpy(&node->fp, stream, sizeof(*stream));
+        node->fp.offset = 0;
+        memcpy(&node->fp.h, &h, sizeof(h));
+
+        la_fseek(stream, off + 512);
+        node->fp.pos = stream->offset;
+
+        off = stream->offset + (1 + (h.size / 512)) * 512;
+        la_fseek(stream, off);
+
+        curr = node;
+    }
+
     return drv;
 }
 
@@ -701,8 +757,17 @@ void la_vclose(la_vdrive_t *drv) {
 la_file_t* la_vfopen(la_vdrive_t *drv, const char *filename) {
     la_assert(drv != NULL);
     if (!filename) return NULL;
+
+    la_vnode_t *root = &drv->root;
+    la_vnode_t *iter = root;
+
+    while (iter) {
+        if (strcmp(filename, iter->fp.h.name) == 0) return &iter->fp;
+        
+        iter = iter->next;
+    }
     
-    return &drv->stream;
+    return NULL;
 }
 
 la_dir_t* la_vdopen(la_vdrive_t *drv, const char *path) {

@@ -1,11 +1,38 @@
 #include "src/latte.h"
 
+void _read_file(la_file_t *fp) {
+    la_header_t h;
+    la_fheader(fp, &h);
+    printf("name: %s, size: %ld\n", h.name, h.size);
+
+    char vbuf[h.size+1];
+    la_fread(fp, vbuf, h.size);
+    vbuf[h.size] = '\0';
+    la_log("%s", vbuf);
+}
+
 int main(int argc, char ** argv) {
     la_init(".");
 
     la_file_t *fp;
     la_dir_t *dir;
     la_header_t h;
+
+    la_vdrive_t *drv = la_vopen("teste.tar", LA_READ_MODE);
+    
+    fp = la_vfopen(drv, "README.md");
+
+    _read_file(fp);
+    _read_file(la_vfopen(drv, ".git"));
+    /*la_fheader(fp, &h);
+    printf("name: %s, size: %ld\n", h.name, h.size);
+
+    char vbuf[h.size+1];
+    la_fread(fp, vbuf, h.size);
+    vbuf[h.size] = '\0';
+    la_log("%s", vbuf);*/
+
+    la_vclose(drv);
 
     if (argv[1]) {
         if (la_isfile(argv[1])) {

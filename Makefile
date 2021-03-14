@@ -86,9 +86,6 @@ $(FOLDERS):
 
 setup: $(FOLDERS)
 
-cstar: cstar.c
-	gcc $< -o cstar
-
 %.bin:
 	@echo "********************************************************"
 	@echo "** COMPILING $@" 
