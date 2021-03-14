@@ -1,4 +1,4 @@
-#include "src/latte.h"
+#include "latte.h"
 
 void _read_file(la_file_t *fp) {
     la_header_t h;
