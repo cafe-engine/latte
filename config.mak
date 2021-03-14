@@ -1,3 +1,2 @@
-INCLUDE = -Iexternal/sabotar/src
-OUT = latte
+NAME = latte
 CVERSION=c89

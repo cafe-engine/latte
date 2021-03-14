@@ -1,127 +1,143 @@
-MUSL_BASE_DIR =
-MUSL_PATH =
-MUSL_TARGET =
-MUSL_CROSS = cross
+NAME = cstar
+CSTD = c99
+CFLAGS =
+LFLAGS = 
+MAIN = main.c
 
-MUSL_BIN_DIR = 
+MODULES = 
 
-PREFIX = 
+PREFIX =
 CC = gcc
 AR = ar
 
-SRC_DIR = src/
-INC_DIR = include/
+MUSL_BIN =
+MUSL_INC =
+MUSL_DIR =
+MUSL_TOOLCHAIN_DIR = 
+MUSL_TARGET = 
+MUSL_CROSS = 
 
-BIN_DIR = bin/
-LIB_DIR = lib/
-OBJ_DIR = obj/
+LIBNAME = lib$(NAME)
+SLIBNAME = $(LIBNAME).a
+DLIBNAME = $(LIBNAME).so
 
-SRC =
-OUT ?= cstar
+export BIN_DIR = $(PWD)/bin
+export OBJ_DIR = $(PWD)/obj
+export LIB_DIR = $(PWD)/lib
 
-CVERSION = c99
+MODDIR = modules
 
-CFLAGS = 
-LDFLAGS = 
+SRC_DIR = src
+INC_DIR = include
+
+INCLUDE =
 
 -include config.mak
 
-ifeq ($(CFLAGS),)
-    CFLAGS = -Wall -std=$(CVERSION) -static -O2
-endif
-
+SRC += $(wildcard $(SRC_DIR)/*.c)
 INCLUDE += -I$(INC_DIR) -I$(SRC_DIR)
+INCLUDE += $(MODULES:%=-I$(MODDIR)/%/src) $(MODULES:%=-I$(MODDIR)/%/include)
+
+OBJ = $(SRC:%.c=$(OBJ_DIR)/%.o)
+SOBJ = $(OBJ:%.o=%.s.o)
+DOBJ = $(OBJ:%.o=%.d.o)
+
+FOLDERS = $(OBJ_DIR) $(LIB_DIR) $(BIN_DIR)
+
+CFLAGS =-Wall -std=$(CSTD)
 
 ifneq ($(MUSL_TARGET),)
-    PREFIX = $(if $(MUSL_TARGET),$(MUSL_TARGET)-,)
-    MUSL_PATH = $(MUSL_BASE_DIR)/$(PREFIX)$(MUSL_CROSS)
+    ifneq ($(MUSL_TOOLCHAIN_DIR),)
+    MUSL_BIN = $(MUSL_TOOLCHAIN_DIR)/bin
+    MUSL_INC = $(MUSL_TOOLCHAIN_DIR)/$(MUSL_TARGET)/include
+    endif
 endif
 
-ifneq ($(MUSL_PATH),)
-    MUSL_BIN_DIR = $(MUSL_PATH)/bin/
-    MUSL_INCLUDE_FOLDER = $(MUSL_PATH)/$(MUSL_TARGET)/include/
+ifneq ($(MUSL_BIN),)
+    ifeq ($(OS),Window_NT)
+    export Path = $(MUSL_BIN);$(Path)
+    else
+    export PATH = $(MUSL_BIN):$(PATH)
+    endif
 endif
 
-LIBNAME ?= lib$(OUT)
-DLIBNAME ?= $(LIBNAME).so
-SLIBNAME ?= $(LIBNAME).a
-
-ifdef MUSL_INCLUDE_FOLDER
-    INCLUDE += -I$(MUSL_INCLUDE_FOLDER)
+ifneq ($(MUSL_INC),)
+    INCLUDE += -I$(MUSL_INC)
 endif
 
-ifeq ($(OS),Windows_NT)
-    export Path := $(MUSL_BIN_DIR);$(Path)
-else
-    export PATH := $(MUSL_BIN_DIR):$(PATH)
-endif
+export MUSL_BIN
+export MUSL_INC
+export MUSL_DIR
+export MUSL_TOOLCHAIN_DIR 
+export MUSL_TARGET 
+export MUSL_CROSS 
+
+MODS = $(MODULES:%=$(MODDIR)/%)
 
 CROSS_CC = $(PREFIX)$(CC)
 CROSS_AR = $(PREFIX)$(AR)
 
-ifeq ($(SRC),)
-    SRC := $(wildcard $(SRC_DIR)/*.c)  
-endif
+SLIBOUT = $(SLIBNAME:%=$(LIB_DIR)/$(SLIBNAME))
+DLIBOUT = $(DLIBNAME:%=$(LIB_DIR)/$(DLIBNAME))
+OUT = $(NAME:%=$(BIN_DIR)/%)
 
-O_DIR = $(dir $(OBJ_DIR))
-L_DIR = $(dir $(LIB_DIR))
-B_DIR = $(dir $(BIN_DIR))
+build: folders $(MODULES) $(OUT)
 
-OBJ = $(SRC:%.c=$(O_DIR)/%.o)
+folders: $(FOLDERS)
 
-SOBJ = $(OBJ:%.o=%.s.o)
-DOBJ = $(OBJ:%.o=%.d.o)
+all: folders $(SLIBOUT) $(DLIBOUT) $(OUT)
 
-LDFLAGS += -L$(LIB_DIR) -l$(OUT)
-FOLDERS = $(BIN_DIR) $(LIB_DIR) $(OBJ_DIR)
-
-
-.PHONY: all
+.PHONY: all build folders
 .SECONDARY: $(SOBJ) $(DOBJ)
 
-all: setup $(L_DIR)/$(SLIBNAME) $(L_DIR)/$(DLIBNAME) $(B_DIR)/$(OUT).bin
 
 $(FOLDERS):
 	@mkdir -p $@
 
-setup: $(FOLDERS)
-
-%.bin:
+$(OUT): $(MAIN) $(SLIBOUT)
 	@echo "********************************************************"
-	@echo "** COMPILING $@" 
+	@echo "** COMPILING $@"
 	@echo "********************************************************"
-	$(CROSS_CC) main.c -o $@ $(CFLAGS) $(INCLUDE) $(LDFLAGS) 
+	$(CROSS_CC) $(MAIN) -o $@ $(INCLUDE) $(CFLAGS) -L$(LIB_DIR) -l$(NAME) $(LFLAGS)
 	@echo ""
 
 %.a: $(SOBJ)
 	@echo "********************************************************"
 	@echo "** CREATING $@"
 	@echo "********************************************************"
-	$(CROSS_AR) rcs $@ $(SOBJ)
+	$(CROSS_AR) rcs $@ $(shell find $(OBJ_DIR)/ -name "*.o")
 	@echo ""
 
 %.so: $(DOBJ)
 	@echo "********************************************************"
 	@echo "** CREATING $@"
 	@echo "********************************************************"
-	$(CROSS_CC) -shared -o $@ $(DOBJ)
+	$(CROSS_CC) -shared -o $@ $(shell find $(OBJ_DIR)/ -name "*.d.o") $(INCLUDE) $(CFLAGS)
 	@echo ""
 
-$(O_DIR)/%.s.o: %.c
+$(OBJ_DIR)/%.s.o: %.c
 	@echo "********************************************************"
 	@echo "** $(SLIBNAME): COMPILING SOURCE $<"
 	@echo "********************************************************"
 	@mkdir -p '$(@D)'
-	$(CROSS_CC) -c $< -o $@ $(CFLAGS) $(INCLUDE) $(LDFLAGS)
+	$(CROSS_CC) -c $< -o $@ $(INCLUDE) $(CFLAGS) 
 
-$(O_DIR)/%.d.o: %.c
+$(OBJ_DIR)/%.d.o: %.c
 	@echo "********************************************************"
 	@echo "** $(DLIBNAME): COMPILING SOURCE $<"
 	@echo "********************************************************"
 	@mkdir -p '$(@D)'
-	$(CROSS_CC) -c $< -o $@ -fPIC $(CFLAGS) $(INCLUDE) $(LDFLAGS)
+	$(CROSS_CC) -c $< -o $@ -fPIC $(INCLUDE) $(CFLAGS)
+
+$(MODULES):
+	make lib$@.a -C $(MODDIR)/$@
+
+clean_modules: $(MODS)
+	make clean -C $<
 
 clean:
 	rm -rf $(OUT)
 	rm -rf $(DLIBNAME) $(SLIBNAME)
 	rm -rf $(FOLDERS)
+
+clean_all: clean clean_modules
