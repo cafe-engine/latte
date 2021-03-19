@@ -8,3 +8,4 @@ Makefile1
 bin/
 obj/
 lib/
+compile_commands.json

@@ -1,6 +1,6 @@
 #include "latte.h"
 
-void _read_file(la_file_t *fp) {
+void _print_file(la_file_t *fp) {
     la_header_t h;
     la_fheader(fp, &h);
     printf("name: %s, size: %ld\n", h.name, h.size);
@@ -22,8 +22,8 @@ int main(int argc, char ** argv) {
     
     fp = la_vfopen(drv, "README.md");
 
-    _read_file(fp);
-    _read_file(la_vfopen(drv, ".git"));
+    _print_file(fp);
+    _print_file(la_vfopen(drv, ".git"));
     /*la_fheader(fp, &h);
     printf("name: %s, size: %ld\n", h.name, h.size);
 

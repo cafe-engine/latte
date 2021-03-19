@@ -112,6 +112,7 @@ LA_API int la_isdir(const char *path);
 LA_API la_file_t* la_fopen(const char *filename, int mode);
 LA_API int la_freopen(la_file_t *fp, const char *filename, int mode);
 LA_API void la_fclose(la_file_t *fp);
+LA_API int la_fclose_stream(la_file_t *fp);
 
 LA_API int la_fheader(la_file_t *fp, la_header_t *out);
 LA_API int la_fseek(la_file_t *fp, long offset);
@@ -152,7 +153,6 @@ LA_API void la_vnode_destroy(la_vnode_t *node);
 
 LA_API la_file_t* la_vnode_file(la_vnode_t *node);
 LA_API la_dir_t* la_vnode_dir(la_vnode_t *node);
-
 
 
 /***********************
@@ -508,6 +508,15 @@ void la_fclose(la_file_t *fp) {
     if (!fp) return;
 }
 
+int la_fclose_stream(la_file_t *fp) {
+    if (!fp) return 0;
+    
+    if (fp->stream) fclose(fp->stream);
+    else return 0;
+
+    return 1;
+}
+
 int la_fheader(la_file_t *fp, la_header_t *out) {
     la_assert(fp != NULL);
     if (!out) return 0;
@@ -767,6 +776,7 @@ la_file_t* la_vfopen(la_vdrive_t *drv, const char *filename) {
         iter = iter->next;
     }
     
+    la_error("file not found: %s", filename);
     return NULL;
 }
 
