@@ -314,7 +314,7 @@ int la_header(const char *path, la_header_t *out) {
 
     struct stat s;
     if (stat(file, &s) != 0) {
-        fprintf(stderr, "cannot open %s\n", path);
+        la_error("cannot open '%s'", path);
         return 0;
     }
 
@@ -365,21 +365,39 @@ int la_mkdir(const char *path) {
 #else
     err = mkdir(dir, 0733);
 #endif
-    return err;
+    return err == 0;
 }
 
 int la_rmdir(const char *path) {
     if (!path) return 0;
+    la_dir_t *dp = la_dopen(path);
+    if (!dp) {
+        la_error("cannot remove '%s', directory don't exists", path);
+        return 0;
+    }
+    la_header_t h;
 
     char dir[100];
+    while (la_dread(dp, &h)) {
+        /* if (h.type == LA_TREG) la_rm(h. */
+        if (h.name[0] != '.') {
+            sprintf(dir, "%s/%s", path, h.name);
+            if (h.type == LA_TREG) la_rm(dir);
+            else if (h.type == LA_TDIR) la_rmdir(dir);
+        } 
+    }
+
+    la_dclose(dp);
+
     la_resolve_path(path, dir);
+    int err = 0;
 
 #ifdef _WIN32
-    _rmdir(dir);
+    err = _rmdir(dir);
 #else
-    rmdir(dir);
+    err = rmdir(dir);
 #endif
-    return 1;
+    return err == 0;
 }
 
 int la_isfile(const char *filename) {
@@ -631,14 +649,19 @@ int la_dheader(la_dir_t *dir, la_header_t *out) {
 
 la_dir_t* la_dopen(const char *path) {
     la_assert(path != NULL);
+    char p[100];
+    DIR *dp = NULL;
+
+    p[0] = '\0';
+    la_resolve_path(path, p);
+    dp = opendir(p);
+    if (!dp) {
+        la_error("cannot open '%s'", path);
+        return NULL;
+    }
 
     la_dir_t *dir = (la_dir_t*)malloc(sizeof(*dir));
-
-    char p[100];
-    memset(p, 0, 100);
-    la_resolve_path(path, p);
-
-    dir->stream = opendir(p);
+    dir->stream = dp;
 
     _header(p, &dir->h);
     char *c = p;
@@ -656,7 +679,10 @@ void la_dclose(la_dir_t *dir) {
 }
 
 int la_dread(la_dir_t *dir, la_header_t *out) {
-    if (!dir) return 0;
+    if (!dir) {
+        la_error("dir cannot be NULL");
+        return 0;
+    }
     if (!out) return 0;
     struct dirent *d = NULL;
 
@@ -664,9 +690,9 @@ int la_dread(la_dir_t *dir, la_header_t *out) {
     if (!d) return 0;
 
     char file[100];
-    strcpy(file, dir->h.name);
-    strcat(file, d->d_name);
+    sprintf(file, "%s/%s", dir->h.name, d->d_name);
     _header(file, out);
+    strcpy(out->name, d->d_name);
     return 1;
 }
 
