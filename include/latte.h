@@ -276,13 +276,19 @@ static Latte _ctx;
  **********************/
 
 int la_resolve_path(const char *path, char *out) {
+    if (!out) return 0;
+    if (path && path[0] == '/') {
+        strcpy(out, path);
+        return 1;
+    }
+
     char base[64];
     la_get_basedir(base);
     int len = strlen(base);
 
     strcpy(out, base);
     if (base[len] != '/' && base[len] != '\\') strcat(out, "/");
-    strcat(out, path);
+    if (path) strcat(out, path);
     return 1;
 }
 
@@ -313,10 +319,7 @@ int la_header(const char *path, la_header_t *out) {
     la_resolve_path(path, file);
 
     struct stat s;
-    if (stat(file, &s) != 0) {
-        la_error("cannot open '%s'", path);
-        return 0;
-    }
+    if (stat(file, &s) != 0) return 0;
 
     out->gid = s.st_gid;
     out->uid = s.st_uid;
@@ -370,11 +373,11 @@ int la_mkdir(const char *path) {
 
 int la_rmdir(const char *path) {
     if (!path) return 0;
-    la_dir_t *dp = la_dopen(path);
-    if (!dp) {
-        la_error("cannot remove '%s', directory don't exists", path);
+    if (!la_header(path, NULL)) {
+        la_error("cannot remove '%s'", path);
         return 0;
     }
+    la_dir_t *dp = la_dopen(path);
     la_header_t h;
 
     char dir[100];
@@ -425,10 +428,7 @@ static int _get_mode(char *out, int mode) {
     if (mode & LA_REWRITE_MODE) out[0] = 'w';
     else if (mode & LA_READ_MODE) out[0] = 'r';
     else if (mode & LA_WRITE_MODE) out[0] = 'w';
-    else {
-        fprintf(stderr, "invalid file open mode: %d\n", mode);
-        exit(1);
-    }
+    else la_fatal("invalid file open mode: %d\n", mode);
 
     out[1] = 'b';
     
@@ -553,6 +553,10 @@ int la_fseek(la_file_t *fp, long offset) {
 
     fseek(fp->stream, fp->pos + fp->offset, SEEK_SET);
     return 1;
+}
+
+long la_ftell(la_file_t *fp) {
+    return fp->offset;
 }
 
 int la_fread(la_file_t *fp, char *out, int bytes) {

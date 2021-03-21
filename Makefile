@@ -5,12 +5,12 @@ LFLAGS =
 MAIN = main.c
 
 TARGET = 
-PREFIX = 
+PREFIX ?= 
 
 MODULES = 
 
-CC := cc
-AR := ar
+CC ?= cc
+AR ?= ar
 
 LIBNAME = lib$(NAME)
 SLIBNAME = $(LIBNAME).a
@@ -43,7 +43,6 @@ CFLAGS =-Wall -std=$(CSTD)
 
 MODS = $(MODULES:%=$(MODDIR)/%)
 
-PREFIX = $(addprefix $(TARGET),-)
 CROSS_CC = $(PREFIX)$(CC)
 CROSS_AR = $(PREFIX)$(AR)
 
