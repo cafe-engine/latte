@@ -110,7 +110,7 @@ LA_API int la_isdir(const char *path);
 
 LA_API la_file_t* la_fopen(const char *filename, int mode);
 LA_API int la_freopen(la_file_t *fp, const char *filename, int mode);
-LA_API void la_fclose(la_file_t *fp);
+LA_API int la_fclose(la_file_t *fp);
 LA_API int la_fclose_stream(la_file_t *fp);
 
 LA_API int la_fheader(la_file_t *fp, la_header_t *out);
@@ -128,9 +128,10 @@ LA_API int la_finsert(la_file_t *fp, const char *buffer, int bytes);
  **********************/
 
 LA_API la_dir_t* la_dopen(const char *path);
-LA_API void la_dclose(la_dir_t *dp);
+LA_API int la_dclose(la_dir_t *dp);
 
 LA_API la_file_t* la_dfopen(la_dir_t *dir, const char *filename, int mode);
+LA_API la_dir_t* la_ddopen(la_dir_t *dir, const char *path);
 
 LA_API int la_drewind(la_dir_t *dp);
 LA_API int la_dread(la_dir_t *dp, la_header_t *out);
@@ -139,16 +140,8 @@ LA_API int la_dread(la_dir_t *dp, la_header_t *out);
  *       Virtual       *
  ***********************/
 
-LA_API la_vfs_t* la_vfs_mount(const char *path, int mode);
-
-LA_API int la_vfs_umount(la_vfs_t *drv);
-
-LA_API int la_vfs_mkdir(la_vfs_t *drv, const char *path, int recursive);
-LA_API int la_vfs_rmdir(la_vfs_t *drv, const char *path, int recursive);
-
-LA_API int la_vfs_touch(la_vfs_t *drv, const char *filename);
-LA_API int la_vfs_rm(la_vfs_t *drv, const char *filename);
-
+LA_API la_vfs_t* la_vopen(const char *filename, int mode);
+LA_API int la_vclose(la_vfs_t *vfs);
 
 LA_API la_file_t* la_vfopen(la_vfs_t *drv, const char *filename);
 LA_API la_dir_t* la_vdopen(la_vfs_t *drv, const char *path);
@@ -161,6 +154,8 @@ LA_API int la_node_destroy(la_node_t *node);
 LA_API la_file_t* la_node_file(la_node_t *node);
 LA_API la_dir_t* la_node_dir(la_node_t *node);
 
+LA_API int la_node_exists(la_node_t *node, const char *name);
+LA_API int la_node_search(la_node_t *node, const char *name);
 LA_API int la_node_push_child(la_node_t *node, la_node_t *child);
 
 
@@ -256,12 +251,10 @@ struct la_dir_s {
 };
 
 struct la_node_s {
+    char name[100];
     int type;
 
-    union {
-        la_file_t fp;
-        la_dir_t dir;
-    };
+    la_file_t fp;
 
     la_node_t *child;
     la_node_t *next;
@@ -269,7 +262,7 @@ struct la_node_s {
 
 struct la_vfs_s {
     la_file_t stream;
-    la_node_t root; 
+    la_node_t *root; 
 };
 
 struct Latte {
@@ -531,8 +524,13 @@ int la_freopen(la_file_t *fp, const char *filename, int mode) {
     return 1;
 }
 
-void la_fclose(la_file_t *fp) {
-    if (!fp) return;
+int la_fclose(la_file_t *fp) {
+    if (!fp) return 0;
+
+    la_fclose_stream(fp);
+
+    free(fp);
+    return 1;
 }
 
 int la_fclose_stream(la_file_t *fp) {
@@ -684,7 +682,7 @@ la_dir_t* la_dopen(const char *path) {
     return dir;
 }
 
-void la_dclose(la_dir_t *dir) {
+int la_dclose(la_dir_t *dir) {
     if (!dir) return;
     if (dir->stream) closedir(dir->stream);
 
@@ -709,6 +707,23 @@ la_file_t* la_dfopen(la_dir_t *dir, const char *filename, int mode) {
     return fp;
 }
 
+la_dir_t* la_ddopen(la_dir_t *dir, const char *path) {
+    if (!dir) return NULL;
+    if (!path) return NULL;
+
+    char file[100] = "";
+    strcat(file, dir->h.name);
+    strcat(file, "/");
+    strcat(file, path);
+
+    la_dir_t *dp = la_dopen(file);
+
+    if (!dp) {
+        la_error("failed to open: %s", file);
+    }
+    return dp;
+}
+
 int la_dread(la_dir_t *dir, la_header_t *out) {
     if (!dir) {
         la_error("dir cannot be NULL");
@@ -730,77 +745,6 @@ int la_dread(la_dir_t *dir, la_header_t *out) {
 /*************************
  *        Virtual        *
  *************************/
-
-la_vfs_t* la_vfs_mount(const char *path, int mode) {
-    if (!path) {
-        la_error("null filename");
-        return 0;
-    }
-    la_header_t h;
-    la_header(path, &h);
-    la_vfs_t *vfs = (la_vfs_t*)malloc(sizeof(*vfs));
-    memset(vfs, 0, sizeof(*vfs));
-
-    if (h.type == LA_TREG) {
-        char file[100];
-        la_resolve_path(path, file);
-        _file_init(&vfs->stream, file, mode);
-        vfs->root.type = LA_TDIR;
-        vfs->root.fp = vfs->stream;
-    } else {
-        char file[100];
-        la_resolve_path(path, file);
-    }
-    return NULL;
-}
-
-int la_vfs_umount(la_vfs_t *vfs) {
-
-    return 1;
-}
-
-int la_vfs_mkdir(la_vfs_t *vfs, const char *path, int recursive) {
-    if (!vfs) return 0;
-    if (!path) return 0;
-    la_node_t *root = &vfs->root;
-    char name[100]; 
-
-    char *out = strchr(path, '/');
-    if (!out) {
-        strcpy(name, path);
-        strcat(name, "/");
-    } else {
-        out++;
-        unsigned int sz = out-path; 
-        memcpy(name, path, sz);
-    }
-
-    la_fatal("okok: %s", name);
-    
-    return 1;
-}
-
-int la_vfs_rmdir(la_vfs_t *vfs, const char *path, int recursive) {
-    return 1;
-}
-
-int la_vfs_touch(la_vfs_t *vfs, const char *filename) {
-    return 1;
-}
-
-int la_vfs_rm(la_vfs_t *vfs, const char *filename) {
-    return 1;
-}
-
-la_node_t* la_node_create(int type) {
-    la_node_t *node = (la_node_t*)malloc(sizeof(*node));
-    la_assert(node != NULL);
-
-    memset(node, 0, sizeof(*node));
-    node->type = type;
-
-    return node;
-}
 
 int _posix_to_la_header(la_posix_header_t *posh, la_header_t *out) {
     if (!posh) {
@@ -825,11 +769,35 @@ int _la_header_to_posix(la_header_t *h, la_posix_header_t *out) {
     return 1;
 }
 
+la_node_t* la_node_create(int type) {
+    la_node_t *node = (la_node_t*)malloc(sizeof(*node));
+    la_assert(node != NULL);
+
+    memset(node, 0, sizeof(*node));
+    node->type = type;
+
+    return node;
+}
+
+int la_node_exists(la_node_t *node, const char *name) {
+    if (!node) return 0;
+    if (!name) return 0;
+
+    la_node_t *aux = node;
+    while (aux->next) {
+        if (!strcmp(node->fp.h.name, name)) return 1;
+        aux = aux->next;
+    }
+
+    return 0;
+}
+
 la_vfs_t* la_vopen(const char *vhd, int mode) {
     la_assert(vhd != NULL);
     la_vfs_t *drv = (la_vfs_t*)malloc(sizeof(*drv));
     if (!drv) la_fatal("cannot malloc for %s", vhd);
     memset(drv, 0, sizeof(*drv));
+    drv->root = la_node_create(LA_TDIR);
 
     if (!la_freopen(&drv->stream, vhd, mode)) {
         la_error("cannot open virtual drive");
@@ -837,19 +805,22 @@ la_vfs_t* la_vopen(const char *vhd, int mode) {
         return NULL;
     }
 
-    memset(&drv->root, 0, sizeof(drv->root));
-    drv->root.type = 1;
+    memset(drv->root, 0, sizeof(*drv->root));
+    drv->root->type = 1;
 
 
     la_file_t *stream = &drv->stream;
     int off = 0;
-    la_node_t *curr = &drv->root;
+    la_node_t *curr = drv->root;
+    int sz = 0;
     while (off < stream->h.size-1024) { /* tar two empty 512b blocks */
         la_posix_header_t ph;
         la_header_t h;
         
         la_fread(stream, (char*)&ph, sizeof(ph));    
         _posix_to_la_header(&ph, &h);
+
+        if (!h.name[0]) break;
 
         la_node_t *node = la_node_create(h.type);
         if (curr) curr->next = node;
@@ -860,33 +831,19 @@ la_vfs_t* la_vopen(const char *vhd, int mode) {
 
         la_fseek(stream, off + 512);
         node->fp.pos = stream->offset;
+        off = stream->offset;
 
-        off = stream->offset + (1 + (h.size / 512)) * 512;
+        if (h.size > 0) off += (1 + (h.size / 512)) * 512;
         la_fseek(stream, off);
 
         curr = node;
     }
+    la_fseek(stream, 0);
 
     return drv;
 }
 
-static la_node_t* dir_to_node(la_dir_t *dir);
-static la_node_t* file_to_node(la_file_t *fp);
-
-la_node_t* dir_to_node(la_dir_t *dir) {
-    if (!dir) return NULL;
-
-    la_header_t h;
-    la_node_t *node = la_node_create(LA_TDIR);
-    while (la_dread(dir, &h)) {
-        if (h.type == LA_TREG) {
-            la_file_t *fp = la_dfopen(dir, h.name, LA_READ_MODE);
-        }
-    }
-
-    return node;
-}
-
+#if 0
 la_vfs_t* la_vmount(const char *path, int mode) {
     la_assert(path != NULL);
     la_vfs_t *drv = (la_vfs_t*)malloc(sizeof(*drv));
@@ -904,19 +861,21 @@ la_vfs_t* la_vmount(const char *path, int mode) {
     }
     return NULL;
 }
+#endif
 
-void la_vclose(la_vfs_t *drv) {
-    if (!drv) return;
+int la_vclose(la_vfs_t *drv) {
+    if (!drv) return 0;
     
     if (drv->stream.stream) fclose(drv->stream.stream);
+    return 1;
 }
 
 la_file_t* la_vfopen(la_vfs_t *drv, const char *filename) {
     la_assert(drv != NULL);
     if (!filename) return NULL;
 
-    la_node_t *root = &drv->root;
-    la_node_t *iter = root;
+    la_node_t *iter = drv->root;
+    la_log("%s", filename);
 
     while (iter) {
         if (strcmp(filename, iter->fp.h.name) == 0) return &iter->fp;
@@ -930,25 +889,6 @@ la_file_t* la_vfopen(la_vfs_t *drv, const char *filename) {
 
 la_dir_t* la_vdopen(la_vfs_t *drv, const char *path) {
     return NULL;
-}
-
-int la_node_push_child(la_node_t *node, la_node_t *child) {
-    if (!node) return 0;
-    if (!child) return 0;
-
-    la_node_t *root = node->child;
-    if (!root) {
-        node->child = child;
-        return 1;
-    }
-
-    while (root->next) {
-        root = root->next;
-    }
-
-    root->next = child;
-
-    return 1;
 }
 
 /***********************

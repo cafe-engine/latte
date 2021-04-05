@@ -18,21 +18,16 @@ int main(int argc, char ** argv) {
     la_dir_t *dir;
     la_header_t h;
 
-    la_vdrive_t *drv = la_vopen("teste.tar", LA_READ_MODE);
-    
-    fp = la_vfopen(drv, "README.md");
+    la_vfs_t *vfs = la_vopen("teste.tar", LA_READ_MODE);
 
-    _print_file(fp);
-    _print_file(la_vfopen(drv, ".git"));
-    /*la_fheader(fp, &h);
-    printf("name: %s, size: %ld\n", h.name, h.size);
+    la_file_t *file = la_vfopen(vfs, "README.md");
 
-    char vbuf[h.size+1];
-    la_fread(fp, vbuf, h.size);
-    vbuf[h.size] = '\0';
-    la_log("%s", vbuf);*/
+    la_fheader(file, &h);
 
-    la_vclose(drv);
+    char out[h.size+1];
+    la_fread(file, out, h.size);
+    out[h.size] = '\0';
+    la_log("%s", out);
 
     if (argv[1]) {
         if (la_isfile(argv[1])) {
