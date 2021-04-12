@@ -146,6 +146,7 @@ LA_API int la_vclose(la_vfs_t *vfs);
 LA_API la_file_t* la_vfopen(la_vfs_t *drv, const char *filename);
 LA_API la_dir_t* la_vdopen(la_vfs_t *drv, const char *path);
 
+LA_API int la_isvfile(la_vfs_t *drv, const char *filename);
 LA_API int la_vreplace(la_vfs_t *drv, const char *f1, const char *f2);
 
 LA_API la_node_t* la_node_create(int type);
@@ -683,10 +684,11 @@ la_dir_t* la_dopen(const char *path) {
 }
 
 int la_dclose(la_dir_t *dir) {
-    if (!dir) return;
+    if (!dir) return 0;
     if (dir->stream) closedir(dir->stream);
 
     free(dir);
+    return 1;
 }
 
 la_file_t* la_dfopen(la_dir_t *dir, const char *filename, int mode) {
@@ -785,7 +787,10 @@ int la_node_exists(la_node_t *node, const char *name) {
 
     la_node_t *aux = node;
     while (aux->next) {
-        if (!strcmp(node->fp.h.name, name)) return 1;
+        char *p = node->fp.h.name;
+        if (*p == '.') p++;
+        if (*p == '/') p++;
+        if (!strcmp(p, name)) return 1;
         aux = aux->next;
     }
 
@@ -827,6 +832,7 @@ la_vfs_t* la_vopen(const char *vhd, int mode) {
 
         memcpy(&node->fp, stream, sizeof(*stream));
         node->fp.offset = 0;
+        node->fp.mode = mode;
         memcpy(&node->fp.h, &h, sizeof(h));
 
         la_fseek(stream, off + 512);
@@ -870,15 +876,26 @@ int la_vclose(la_vfs_t *drv) {
     return 1;
 }
 
+int la_isvfile(la_vfs_t *drv, const char *filename) {
+   la_file_t *fp = la_vfopen(drv, filename); 
+   return fp != NULL;
+}
+
+int la_isvdir(la_vfs_t *drv, const char *path) {
+    return 0;
+}
+
 la_file_t* la_vfopen(la_vfs_t *drv, const char *filename) {
     la_assert(drv != NULL);
     if (!filename) return NULL;
 
     la_node_t *iter = drv->root;
-    la_log("%s", filename);
 
     while (iter) {
-        if (strcmp(filename, iter->fp.h.name) == 0) return &iter->fp;
+        char *p = iter->fp.h.name;
+        if ( *p == '.' ) p++;
+        if ( *p == '/' ) p++;
+        if (!strcmp(filename, p)) return &iter->fp;
         
         iter = iter->next;
     }
@@ -896,7 +913,7 @@ la_dir_t* la_vdopen(la_vfs_t *drv, const char *path) {
  ***********************/
 
 int la_log_output(void *out) {
-    latte()->out = out;
+    latte()->out = (FILE*)out;
     return 1;
 }
 
