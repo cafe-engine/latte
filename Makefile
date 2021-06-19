@@ -1,116 +1,67 @@
-NAME ?= hello
-CSTD = c99
-CFLAGS =
-LFLAGS = 
+NAME = latte
+SRC = latte.c
 MAIN = main.c
 
+CC = cc
+AR = ar
+
+CFLAGS = -Wall -std=c89
+LFLAGS =
+
 TARGET = 
-PREFIX ?= 
-
-MODULES = 
-CDEFS ?= 
-
-CC ?= cc
-AR ?= ar
 
 LIBNAME = lib$(NAME)
 SLIBNAME = $(LIBNAME).a
 DLIBNAME = $(LIBNAME).so
 
-BIN_DIR ?= bin
-OBJ_DIR ?= obj
-LIB_DIR ?= lib
-
-MODDIR = modules
-
-SRC_DIR = src
-INC_DIR = include
-
 INCLUDE =
 
--include config.mak
+OBJ = $(SRC:%.c=%.o)
+DOBJ = $(SRC:%.c=%.do)
 
-SRC += $(wildcard $(SRC_DIR)/*.c)
-INCLUDE += -I$(INC_DIR) -I$(SRC_DIR)
-INCLUDE += $(MODULES:%=-I$(MODDIR)/%/src) $(MODULES:%=-I$(MODDIR)/%/include)
+OUT = $(NAME)
 
-OBJ = $(SRC:%.c=$(OBJ_DIR)/%.o)
-SOBJ = $(OBJ:%.o=%.s.o)
-DOBJ = $(OBJ:%.o=%.d.o)
+.PHONY: all build
+.SECONDARY: $(OBJ) $(DOBJ)
 
-FOLDERS = $(OBJ_DIR) $(LIB_DIR) $(BIN_DIR)
+build: $(OUT)
 
-CFLAGS += -Wall -std=$(CSTD)
+all: $(SLIBNAME) $(DLIBNAME) $(OUT)
 
-MODS = $(MODULES:%=$(MODDIR)/%)
-
-CROSS_CC = $(PREFIX)$(CC)
-CROSS_AR = $(PREFIX)$(AR)
-
-SLIBOUT = $(SLIBNAME:%=$(LIB_DIR)/$(SLIBNAME))
-DLIBOUT = $(DLIBNAME:%=$(LIB_DIR)/$(DLIBNAME))
-OUT = $(NAME:%=$(BIN_DIR)/%)
-
-CLEAN_MODULES = $(MODULES:%=%.cls)
-
-build: folders $(MODULES) $(OUT)
-
-folders: $(FOLDERS)
-
-all: folders $(SLIBOUT) $(DLIBOUT) $(OUT)
-
-.PHONY: all build folders $(MODULES)
-.SECONDARY: $(SOBJ) $(DOBJ)
-
-
-$(FOLDERS):
-	@mkdir -p $@
-
-$(OUT): $(MAIN) $(SLIBOUT) 
+$(OUT): $(MAIN) $(SLIBNAME) 
 	@echo "********************************************************"
 	@echo "** COMPILING $@"
 	@echo "********************************************************"
-	$(CROSS_CC) $(MAIN) -o $@ $(INCLUDE) $(CFLAGS) -L$(LIB_DIR) -l$(NAME) $(LFLAGS) $(CDEFS)
+	$(CC) $(MAIN) -o $@ $(INCLUDE) $(CFLAGS) -L. -l$(NAME) $(LFLAGS)
 	@echo ""
 
-%.a: $(SOBJ)
+$(SLIBNAME): $(OBJ)
 	@echo "********************************************************"
 	@echo "** CREATING $@"
 	@echo "********************************************************"
-	$(CROSS_AR) rcs $@ $(shell find $(OBJ_DIR)/ -name "*.o")
+	$(AR) rcs $@ $(OBJ)
 	@echo ""
 
-%.so: $(DOBJ)
+$(DLIBNAME): $(DOBJ)
 	@echo "********************************************************"
 	@echo "** CREATING $@"
 	@echo "********************************************************"
-	$(CROSS_CC) -shared -o $@ $(shell find $(OBJ_DIR)/ -name "*.d.o") $(INCLUDE) $(CFLAGS) $(CDEFS)
+	$(CC) -shared -o $@ $(DOBJ) $(INCLUDE) $(CFLAGS)
 	@echo ""
 
-$(OBJ_DIR)/%.s.o: %.c
+%.o: %.c
 	@echo "********************************************************"
 	@echo "** $(SLIBNAME): COMPILING SOURCE $<"
 	@echo "********************************************************"
-	@mkdir -p '$(@D)'
-	$(CROSS_CC) -c $< -o $@ $(INCLUDE) $(CFLAGS) $(CDEFS)
+	$(CC) -c $< -o $@ $(INCLUDE) $(CFLAGS)
 
-$(OBJ_DIR)/%.d.o: %.c
+%.do: %.c
 	@echo "********************************************************"
 	@echo "** $(DLIBNAME): COMPILING SOURCE $<"
 	@echo "********************************************************"
-	@mkdir -p '$(@D)'
-	$(CROSS_CC) -c $< -o $@ -fPIC $(INCLUDE) $(CFLAGS) $(CDEFS)
-
-$(MODULES):
-	$(MAKE) -C $(MODDIR)/$@
-
-%.cls: $(MODDIR)/%
-	echo $<
-	$(MAKE) clean -C $<
+	$(CC) -c $< -o $@ -fPIC $(INCLUDE) $(CFLAGS)
 
 clean:
 	rm -rf $(OUT)
 	rm -rf $(DLIBNAME) $(SLIBNAME)
-	rm -rf $(FOLDERS)
-
-clean-all: clean $(CLEAN_MODULES)
+	rm -rf $(OBJ) $(DOBJ)
