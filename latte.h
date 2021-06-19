@@ -1,4 +1,3 @@
-#define LATTE_IMPLEMENTATION
 #ifndef LATTE_H
 #define LATTE_H
 
@@ -49,7 +48,6 @@ enum {
     LA_FILE_STREAM = 0,
     LA_FILE_STATIC
 };
-
 
 enum {
     LA_LOG = 1,
@@ -255,7 +253,10 @@ struct la_node_s {
     char name[100];
     int type;
 
-    la_file_t fp;
+    union {
+        la_file_t fp;
+        la_dir_t dp;
+    };
 
     la_node_t *child;
     la_node_t *next;
